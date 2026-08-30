@@ -21,6 +21,9 @@ diagnostics: Final = Console(stderr=True)
 #: The answer, and nothing else. Never markup, never wrapped.
 data: Final = Console(markup=False, highlight=False, soft_wrap=True)
 
+#: Also the answer, when the answer is a table the operator reads.
+data_table: Final = Console(highlight=False)
+
 
 def print_header(title: str) -> None:
     """Announce what the command is about to do."""

@@ -201,13 +201,14 @@ class TestResume:
     def test_a_second_run_reuses_completed_results_and_retries_failures(
         self, job_dir: Path, config_dir: Path, model_server: FakeModelServer
     ) -> None:
-        model_server.script = {"a": ["high", "junk", "junk"], "b": ["junk", "junk"]}
-        model_server.default = "junk"
+        # Content-addressed, because chunks run concurrently: row 1 is
+        # answered validly, row 2 never is.
+        model_server.answers = {"Leak": "high", "Noise": "junk"}
 
         first = run_job(job_dir, config_dir)
         assert first.exit_code == 1  # key 2 never got a valid answer
 
-        model_server.script = {}
+        model_server.answers = {}
         model_server.default = "low"
         model_server.requests.clear()
 

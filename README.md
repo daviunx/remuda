@@ -6,11 +6,9 @@ Private while v1 is built. Analysis: monorepo planning/neo-cli/neo-infer-cheap-b
 
 ## Status
 
-Jobs run. The specification, the layered registry, the retry/rotate/mop-up
-ladder over OpenAI-compatible endpoints, the crash-safe ledger with resume,
-and the `run` / `check` / `preview` / `render` / `report` / `init` commands are
-implemented. Still to come: the opencode transport, catalog discovery,
-zero-config bootstrap, one-shot and inline-bulk invocation, and cross-run stats.
+Jobs run, over named or discovered pools, against HTTP endpoints or the
+opencode CLI. Still to come: one-shot and inline-bulk invocation, cross-run
+stats, and the `neo infer` shim.
 
 ## Quick start
 
@@ -21,6 +19,13 @@ remuda preview jobs/my-job -n 3  # see the exact prompts, zero model calls
 remuda run jobs/my-job           # derive every field for every row
 remuda render .runs/my-job/<ts> --enrich -o out.csv   # input + new columns
 ```
+
+With `OPENROUTER_API_KEY` exported and no configuration files at all, remuda
+self-configures: an implicit `openrouter` provider and a `free` pool
+discovered from its free tier. A local model server answering on
+`127.0.0.1:11434` adds an implicit `local` provider. Every implicit resolution
+is announced on stderr, an explicit registry entry of the same name always
+wins, and `--no-bootstrap` (or `REMUDA_NO_BOOTSTRAP=1`) turns it off.
 
 A run resumes by default: re-invoke the same command and only what is left is
 computed. Any key the pool could not answer makes the run exit non-zero — a
@@ -102,6 +107,45 @@ run starts.
 
 The registry is also constructible entirely in code — configuration files are
 one loader over it, never the only way in.
+
+### Discovering models
+
+A pool entry can be a query against a provider's live catalog instead of a
+model name:
+
+```yaml
+free-fast:
+  strategy: scatter
+  entries:
+    - discover: {provider: openrouter, free: true, min_context: 32000,
+                 sort: throughput, take: 4}
+```
+
+Each provider declares which catalog shape it serves (`openrouter`,
+`openai_compat`, `ollama`). A filter the catalog cannot answer — free-tier
+filtering against a bare `/v1/models` list, for instance — is **refused**
+naming the filter and the provider, never silently ignored.
+
+Queries resolve when a run starts, and the resolved membership is snapshotted
+into the run directory: a resumed run reuses exactly the models the first
+attempt used, because free-tier membership churns week to week.
+
+```bash
+remuda pools show free-fast      # materialized membership
+remuda pools check free-fast     # one minimal request per member; always exits 0
+remuda models list openrouter --free --limit 20
+```
+
+### Transports
+
+| Provider kind | Runs where |
+|---|---|
+| `openai_compat` (OpenRouter, Ollama, vLLM, NIM) | anywhere |
+| `opencode` — `opencode run -m <model>` | the operator's laptop only |
+
+The opencode transport builds its command as an argument list and never
+invokes a shell, so row data reaching the prompt cannot become a command. Its
+version is probed once before a run that uses it.
 
 ## Development
 

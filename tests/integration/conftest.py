@@ -26,7 +26,9 @@ class FakeModelServer(ThreadingHTTPServer):
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), _Handler)
         self.script: dict[str, list[Reply]] = {}
+        self.answers: dict[str, Reply] = {}
         self.default: Reply = "high"
+        self.catalog_payload: dict[str, Any] = {"data": []}
         self.requests: list[dict[str, Any]] = []
         self.headers_seen: list[dict[str, str]] = []
 
@@ -36,8 +38,16 @@ class FakeModelServer(ThreadingHTTPServer):
         host, port = self.server_address[0], self.server_address[1]
         return f"http://{host!s}:{port}/v1"
 
-    def next_reply(self, model_id: str) -> Reply:
-        """Pop this model's next scripted reply, or fall back to the default."""
+    def next_reply(self, model_id: str, prompt: str = "") -> Reply:
+        """The reply for this call.
+
+        `answers` is matched on prompt content FIRST: chunks run
+        concurrently, so an order-based script cannot say "answer this row
+        and not that one" without racing.
+        """
+        for fragment, reply in self.answers.items():
+            if fragment in prompt:
+                return reply
         queue = self.script.get(model_id)
         return queue.pop(0) if queue else self.default
 
@@ -53,6 +63,11 @@ class FakeModelServer(ThreadingHTTPServer):
 class _Handler(BaseHTTPRequestHandler):
     server: FakeModelServer
 
+    def do_GET(self) -> None:
+        """Serve the model catalog, so discovery has something to read."""
+        self.server.requests.append({"method": "GET", "path": self.path})
+        self._send(200, self.server.catalog_payload)
+
     def do_POST(self) -> None:
         """Answer a chat-completions call from the script."""
         length = int(self.headers.get("Content-Length", "0"))
@@ -60,7 +75,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.server.requests.append(payload)
         self.server.headers_seen.append(dict(self.headers))
 
-        reply = self.server.next_reply(str(payload.get("model", "")))
+        messages = payload.get("messages") or [{}]
+        reply = self.server.next_reply(
+            str(payload.get("model", "")), str(messages[-1].get("content", ""))
+        )
         if isinstance(reply, tuple):
             status, body = reply
         else:
@@ -87,6 +105,12 @@ def _completion(text: str) -> dict[str, Any]:
         "choices": [{"index": 0, "message": {"role": "assistant", "content": text}}],
         "usage": {"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.0001},
     }
+
+
+@pytest.fixture(autouse=True)
+def _no_environment_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Integration tests pin their own registry; the environment stays out."""
+    monkeypatch.setenv("REMUDA_NO_BOOTSTRAP", "1")
 
 
 @pytest.fixture

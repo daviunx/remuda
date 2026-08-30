@@ -5,6 +5,8 @@ from rich.panel import Panel
 
 from remuda import __version__
 from remuda.cli.commands import check, init, preview, render_run, report, run
+from remuda.cli.commands.models import models_app
+from remuda.cli.commands.pools import pools_app
 from remuda.cli.console import EXIT_INTERRUPTED, diagnostics
 
 app = typer.Typer(
@@ -28,6 +30,8 @@ app.command("preview")(preview)
 app.command("render")(render_run)
 app.command("report")(report)
 app.command("init")(init)
+app.add_typer(pools_app, name="pools")
+app.add_typer(models_app, name="models")
 
 
 @app.command("version")
