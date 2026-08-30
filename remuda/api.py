@@ -11,11 +11,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
+
+from remuda.catalog.resolve import ResolvedPool, resolve_pool
 from remuda.engine.progress import ProgressCallback
 from remuda.engine.runner import LedgerWriter, Runner, Sink, TransportFactory
 from remuda.ledger.models import LedgerEntry, Report
 from remuda.ledger.resume import OpenedRun, build_lock, open_run
 from remuda.ledger.store import RUNS_DIRNAME, RunStore, new_run_id
+from remuda.preflight import preflight_opencode
 from remuda.registry.registry import Registry
 from remuda.rows import read_rows
 from remuda.spec.models import Job
@@ -30,6 +34,7 @@ class JobRunOutcome:
     report: Report
     store: RunStore
     is_resumed: bool
+    announcements: tuple[str, ...] = ()
 
 
 async def run(
@@ -44,6 +49,7 @@ async def run(
     write: LedgerWriter | None = None,
     done: Mapping[tuple[str, str], LedgerEntry] | None = None,
     run_id: str | None = None,
+    resolved_pools: Mapping[str, ResolvedPool] | None = None,
     transport_factory: TransportFactory = build_transport,
 ) -> Report:
     """Derive every selected field for every row.
@@ -59,6 +65,7 @@ async def run(
         write: called for every decided result — the ledger's append.
         done: results a resume must not recompute.
         run_id: identifies the run in the report.
+        resolved_pools: pools already materialized for this run (FR-3).
         transport_factory: how a provider becomes a transport.
 
     Raises:
@@ -76,6 +83,7 @@ async def run(
         sink=sink,
         write=write,
         done=done,
+        resolved_pools=resolved_pools,
     )
     return await runner.run(rows)
 
@@ -123,11 +131,14 @@ async def run_job_dir(
         fresh=fresh,
     )
     opened.store.write_job(job)
+    resolved = await _resolved_pools(job, registry, opened, pool)
+    announcements = await preflight_opencode(registry, resolved.values())
     report = await _run_into(
         opened,
         job=job,
         rows=rows,
         registry=registry,
+        resolved_pools=resolved,
         pool=pool,
         only=only,
         sink=sink,
@@ -135,7 +146,10 @@ async def run_job_dir(
         transport_factory=transport_factory,
     )
     return JobRunOutcome(
-        report=report, store=opened.store, is_resumed=opened.is_resumed
+        report=report,
+        store=opened.store,
+        is_resumed=opened.is_resumed,
+        announcements=tuple(announcements),
     )
 
 
@@ -153,3 +167,34 @@ async def _run_into(opened: OpenedRun, **options: Any) -> Report:
         store.close()
     store.write_report(report)
     return report
+
+
+async def _resolved_pools(
+    job: Job,
+    registry: Registry,
+    opened: OpenedRun,
+    pool_override: str | None,
+) -> dict[str, ResolvedPool]:
+    """Materialize every pool the run needs, reusing a resume's snapshot.
+
+    A resumed run must keep the models it started with: free-tier membership
+    churns, and re-resolving would silently change who answered the run.
+    """
+    snapshot = opened.store.read_resolved_pools()
+    wanted = {
+        pool_override or field.pool
+        for field in job.fields
+        if (pool_override or field.pool) is not None
+    }
+    resolved: dict[str, ResolvedPool] = {}
+    pending = [name for name in wanted if name is not None and name not in snapshot]
+    if pending:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for name in sorted(pending):
+                resolved[name] = await resolve_pool(
+                    registry.pool(name), registry, client
+                )
+    resolved.update(snapshot)
+    if resolved:
+        opened.store.write_resolved_pools(list(resolved.values()))
+    return resolved

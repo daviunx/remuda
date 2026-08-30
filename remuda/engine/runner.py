@@ -12,13 +12,14 @@ from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 from typing import Any
 
+from remuda.catalog.resolve import ResolvedPool, member_to_model
 from remuda.engine.ladder import ChunkItem, ChunkResult, KeyOutcome, run_chunk
 from remuda.engine.lanes import ModelLane
 from remuda.engine.packing import chunk_keys
 from remuda.engine.plan import EngineError, Skip, eligibility, select_fields
 from remuda.engine.progress import ProgressCallback, ProgressEvent
 from remuda.ledger.models import LedgerEntry, Report
-from remuda.registry.models import Provider
+from remuda.registry.models import ModelConfig, Provider
 from remuda.registry.registry import Registry
 from remuda.rows import row_key
 from remuda.spec.errors import PromptRenderError
@@ -90,6 +91,7 @@ class Runner:
         sink: Sink | None = None,
         write: LedgerWriter | None = None,
         done: Mapping[tuple[str, str], LedgerEntry] | None = None,
+        resolved_pools: Mapping[str, ResolvedPool] | None = None,
     ) -> None:
         self._job = job
         self._registry = registry
@@ -100,6 +102,7 @@ class Runner:
         self._sink = sink
         self._write = write
         self._done = dict(done or {})
+        self._resolved = dict(resolved_pools or {})
         self._transports: dict[str, Transport] = {}
         self._lanes: dict[str, PoolLanes] = {}
         self._derived: dict[str, dict[str, Any]] = {}
@@ -155,22 +158,48 @@ class Runner:
         if pool_name in self._lanes:
             return self._lanes[pool_name]
 
+        lanes = self._lanes_from_resolution(pool_name) or self._lanes_from_registry(
+            pool_name
+        )
+        self._lanes[pool_name] = lanes
+        return lanes
+
+    def _lanes_from_resolution(self, pool_name: str) -> PoolLanes | None:
+        """Lanes from the pool snapshot taken when the run started (FR-3)."""
+        resolved = self._resolved.get(pool_name)
+        if resolved is None:
+            return None
+        if not resolved.members:
+            raise EngineError(
+                f"pool '{pool_name}' resolved to no models — nothing to run"
+            )
+        return PoolLanes(
+            members=tuple(
+                self._lane_for(member_to_model(member)) for member in resolved.members
+            ),
+            mopup=(
+                self._lane_for(member_to_model(resolved.mopup))
+                if resolved.mopup is not None
+                else None
+            ),
+            strategy=resolved.strategy,
+        )
+
+    def _lanes_from_registry(self, pool_name: str) -> PoolLanes:
         pool = self._registry.pool(pool_name)
         if pool.discover_queries:
             raise EngineError(
                 f"pool '{pool.name}' resolves its members from a provider "
-                "catalog, which is not available yet — name its models "
-                "explicitly to run this job"
+                "catalog, which was not resolved for this run — run it through "
+                "`remuda run`, which resolves and snapshots pools"
             )
         if not pool.model_names:
             raise EngineError(f"pool '{pool.name}' has no models to run")
-        lanes = PoolLanes(
+        return PoolLanes(
             members=tuple(self._build_lane(name) for name in pool.model_names),
             mopup=self._build_lane(pool.mopup) if pool.mopup else None,
             strategy=pool.strategy,
         )
-        self._lanes[pool_name] = lanes
-        return lanes
 
     def _pool_name(self, field: FieldSpec) -> str:
         pool_name = self._pool_override or field.pool
@@ -179,7 +208,9 @@ class Runner:
         return pool_name
 
     def _build_lane(self, model_name: str) -> ModelLane:
-        model = self._registry.model(model_name)
+        return self._lane_for(self._registry.model(model_name))
+
+    def _lane_for(self, model: ModelConfig) -> ModelLane:
         provider = self._registry.provider(model.provider)
         transport = self._transports.get(provider.name)
         if transport is None:

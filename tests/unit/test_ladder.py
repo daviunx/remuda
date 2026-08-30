@@ -283,6 +283,68 @@ class TestLaneAccounting:
         assert ladder[0].disabled_reason is not None
         assert "spend ceiling" in ladder[0].disabled_reason
 
+    async def test_cost_is_derived_from_catalog_pricing_when_unreported(
+        self,
+    ) -> None:
+        """A provider that reports no cost still gets accounted for (FR-3)."""
+        transport = ScriptedTransport(
+            {"a": ["high"]},
+            usage=Usage(prompt_tokens=1000, completion_tokens=500),
+        )
+        lane = ModelLane(
+            model=model("a", prompt_price_usd=0.000002, completion_price_usd=0.000008),
+            transport=transport,
+        )
+
+        await run_chunk(FIELD, items("1"), [lane])
+
+        assert lane.stats.cost_usd == pytest.approx(0.006)
+
+    async def test_a_reported_cost_wins_over_catalog_pricing(self) -> None:
+        transport = ScriptedTransport({"a": ["high"]}, usage=Usage(cost_usd=0.25))
+        lane = ModelLane(
+            model=model("a", prompt_price_usd=1.0, completion_price_usd=1.0),
+            transport=transport,
+        )
+
+        await run_chunk(FIELD, items("1"), [lane])
+
+        assert lane.stats.cost_usd == 0.25
+
+    async def test_an_unpriced_model_accrues_no_cost(self) -> None:
+        transport = ScriptedTransport({"a": ["high"]}, usage=Usage(prompt_tokens=999))
+        lane = ModelLane(model=model("a"), transport=transport)
+
+        await run_chunk(FIELD, items("1"), [lane])
+
+        assert lane.stats.cost_usd == 0
+
+    async def test_a_ceiling_reached_through_derived_cost_removes_the_model(
+        self,
+    ) -> None:
+        transport = ScriptedTransport(
+            {"a": ["nope", "nope"], "b": ["high"]},
+            usage=Usage(prompt_tokens=1_000_000),
+        )
+        ladder = [
+            ModelLane(
+                model=model(
+                    "a",
+                    prompt_price_usd=0.000002,
+                    completion_price_usd=0.000008,
+                    max_cost_usd=1.0,
+                ),
+                transport=transport,
+            ),
+            ModelLane(model=model("b"), transport=transport),
+        ]
+
+        result = await run_chunk(FIELD, items("1"), ladder, attempts_per_model=2)
+
+        assert outcome_for(result, "1").model == "b"
+        assert ladder[0].disabled_reason is not None
+        assert "spend ceiling" in ladder[0].disabled_reason
+
     async def test_concurrency_is_bounded_per_model(self) -> None:
         lane = ModelLane(model=model("a", concurrency=1), transport=ScriptedTransport())
 

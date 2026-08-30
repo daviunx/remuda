@@ -7,12 +7,13 @@ report can be re-printed and results re-rendered without calling a model again.
 import hashlib
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import TextIO
 
+from remuda.catalog.resolve import ResolvedPool
 from remuda.errors import RemudaError
 from remuda.ledger.models import LedgerEntry, Report, SpecLock
 from remuda.spec.models import Job
@@ -20,6 +21,7 @@ from remuda.spec.models import Job
 RUNS_DIRNAME = ".runs"
 SPEC_LOCK_FILENAME = "spec.lock.json"
 JOB_SNAPSHOT_FILENAME = "job.json"
+POOL_RESOLVED_FILENAME = "pool.resolved.json"
 LEDGER_FILENAME = "ledger.jsonl"
 REPORT_FILENAME = "report.json"
 
@@ -150,6 +152,29 @@ class RunStore:
             return Job.model_validate_json(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             raise LedgerError(f"cannot read {path}: {error}") from error
+
+    def write_resolved_pools(self, resolved: Sequence[ResolvedPool]) -> None:
+        """Snapshot the pools this run materialized (FR-3).
+
+        A resumed run reuses this rather than re-querying the catalog: free
+        tiers churn, and the models that answered must not change mid-run.
+        """
+        payload = [pool.model_dump(mode="json") for pool in resolved]
+        (self.run_dir / POOL_RESOLVED_FILENAME).write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
+    def read_resolved_pools(self) -> dict[str, ResolvedPool]:
+        """The pools this run materialized, by pool name. Empty when none."""
+        path = self.run_dir / POOL_RESOLVED_FILENAME
+        if not path.is_file():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            pools = [ResolvedPool.model_validate(entry) for entry in payload]
+        except (OSError, ValueError) as error:
+            raise LedgerError(f"cannot read {path}: {error}") from error
+        return {pool.pool: pool for pool in pools}
 
     # -- ledger ------------------------------------------------------------
 

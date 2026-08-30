@@ -12,6 +12,7 @@ from remuda.ledger.resume import OpenedRun, ResumeRefusedError, build_lock, open
 from remuda.ledger.store import (
     JOB_SNAPSHOT_FILENAME,
     LEDGER_FILENAME,
+    POOL_RESOLVED_FILENAME,
     REPORT_FILENAME,
     RUNS_DIRNAME,
     SPEC_LOCK_FILENAME,
@@ -28,6 +29,7 @@ __all__ = [
     "ALL_COLUMNS",
     "JOB_SNAPSHOT_FILENAME",
     "LEDGER_FILENAME",
+    "POOL_RESOLVED_FILENAME",
     "REPORT_FILENAME",
     "RUNS_DIRNAME",
     "SPEC_LOCK_FILENAME",

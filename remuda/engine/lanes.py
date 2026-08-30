@@ -129,8 +129,15 @@ class ModelLane:
         self.stats.latency_ms_total += result.latency_ms
         self.stats.prompt_tokens += result.usage.prompt_tokens
         self.stats.completion_tokens += result.usage.completion_tokens
-        if result.usage.cost_usd is not None:
-            self.stats.cost_usd += result.usage.cost_usd
+        cost = result.usage.cost_usd
+        if cost is None:
+            # The provider reported no cost — derive it from the catalog
+            # pricing carried on the model, when there is any.
+            cost = self.model.cost_of(
+                result.usage.prompt_tokens, result.usage.completion_tokens
+            )
+        if cost is not None:
+            self.stats.cost_usd += cost
         ceiling = self.model.max_cost_usd
         if ceiling is not None and self.stats.cost_usd >= ceiling:
             self.disable(
