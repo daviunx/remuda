@@ -6,9 +6,9 @@ Private while v1 is built. Analysis: monorepo planning/neo-cli/neo-infer-cheap-b
 
 ## Status
 
-Jobs run, over named or discovered pools, against HTTP endpoints or the
-opencode CLI. Still to come: one-shot and inline-bulk invocation, cross-run
-stats, and the `neo infer` shim.
+Feature-complete for v1: jobs, inline bulk and one-shot requests run over
+named or discovered pools, against HTTP endpoints or the opencode CLI, with
+resume, rendering, reporting and cross-run statistics.
 
 ## Quick start
 
@@ -18,6 +18,20 @@ remuda check jobs/my-job         # lint the spec, its input file and its pools
 remuda preview jobs/my-job -n 3  # see the exact prompts, zero model calls
 remuda run jobs/my-job           # derive every field for every row
 remuda render .runs/my-job/<ts> --enrich -o out.csv   # input + new columns
+```
+
+`run` takes three shapes, all one engine:
+
+```bash
+# a job directory
+remuda run jobs/my-job
+
+# inline bulk: CSV in, the same CSV out with one new column
+remuda run "Severity of {{ title }}?" -i posts.csv --field severity \
+    --vocab high,low -p cheap -o enriched.csv
+
+# one question: the answer is all that reaches stdout
+remuda run "Name the capital of Spain" -p cheap | tr a-z A-Z
 ```
 
 With `OPENROUTER_API_KEY` exported and no configuration files at all, remuda
@@ -52,6 +66,18 @@ failed with its last reason. Within a packed call, valid answers are banked
 immediately — only the keys still invalid re-enter the ladder. Rate limits and
 transport failures cool a model down and redistribute its work without
 consuming a validation attempt.
+
+## What the models actually did
+
+```bash
+remuda runs list --runs-dir jobs/my-job/.runs
+remuda stats    --runs-dir jobs/my-job/.runs   # success rate, latency, cost
+remuda runs prune --keep 5 --runs-dir jobs/my-job/.runs   # dry; --write deletes
+```
+
+`stats` ranks models by how they have really performed, so YOU can reorder a
+pool. remuda never reorders one itself — a tool that rewrote its own
+configuration from yesterday's latency would be impossible to reason about.
 
 ## Embedding
 

@@ -4,7 +4,16 @@ import typer
 from rich.panel import Panel
 
 from remuda import __version__
-from remuda.cli.commands import check, init, preview, render_run, report, run
+from remuda.cli.commands import (
+    check,
+    init,
+    preview,
+    render_run,
+    report,
+    run,
+    runs_app,
+    stats,
+)
 from remuda.cli.commands.models import models_app
 from remuda.cli.commands.pools import pools_app
 from remuda.cli.console import EXIT_INTERRUPTED, diagnostics
@@ -29,7 +38,9 @@ app.command("check")(check)
 app.command("preview")(preview)
 app.command("render")(render_run)
 app.command("report")(report)
+app.command("stats")(stats)
 app.command("init")(init)
+app.add_typer(runs_app, name="runs")
 app.add_typer(pools_app, name="pools")
 app.add_typer(models_app, name="models")
 
