@@ -12,18 +12,22 @@ JobDirFactory = Callable[..., Path]
 
 
 @pytest.fixture(autouse=True)
-def _no_sockets(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Fail loudly if anything under test opens a socket.
+def _no_outbound_connections(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Fail loudly if anything under test reaches the network.
 
-    Phase 1 is the zero-network core: `check`, `preview` and `init` must not
-    reach a model endpoint. A guard is the only way to prove that.
+    Every unit test here runs against scripted transports and local files, so
+    an outbound connection means a code path escaped its double. Connecting
+    is what is blocked, not socket creation — asyncio builds its own event
+    loop out of a socket pair, and that must keep working.
     """
 
     def refuse(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("the zero-network core opened a socket")
+        raise AssertionError("a unit test tried to reach the network")
 
-    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
     yield
 
 
