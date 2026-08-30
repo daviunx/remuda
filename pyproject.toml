@@ -109,6 +109,12 @@ markers = [
 [tool.coverage.run]
 source = ["remuda"]
 branch = true
+# The engine appends the ledger through asyncio.to_thread, so lines execute on
+# worker threads; without this, coverage loses track of them
+# (documentation/standards/testing/overview.md → Coverage Enforcement).
+# `greenlet` is deliberately absent — remuda has no greenlet dependency and
+# coverage errors out on a concurrency mode whose module is not installed.
+concurrency = ["thread"]
 omit = ["*/tests/*", "*/__pycache__/*"]
 
 [tool.coverage.report]
