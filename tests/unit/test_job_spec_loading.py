@@ -50,7 +50,7 @@ def write_job(root: Path, spec: dict[str, object], *, vocabulary: str | None) ->
 
 def mutate_field(**overrides: object) -> dict[str, object]:
     """Copy VALID_JOB with the single field's keys overridden."""
-    field = {**VALID_JOB["fields"][0], **overrides}  # type: ignore[index,dict-item]
+    field = {**VALID_JOB["fields"][0], **overrides}  # type: ignore[index]
     return {**VALID_JOB, "fields": [field]}
 
 
@@ -68,6 +68,7 @@ class TestJobFromDirAcceptsValidJob:
         assert severity.kind == "classify"
         assert severity.pool == "free-fast"
         assert list(severity.vocabulary) == ["critical", "high", "medium", "low"]
+        assert severity.prompt is not None
         assert list(severity.prompt.inputs) == ["title", "body"]
 
 
