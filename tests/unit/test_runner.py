@@ -1,5 +1,6 @@
 """FR-2/FR-4/FR-6/FR-7 — the runner: ordering, skips, reporting, sinks."""
 
+import threading
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -377,3 +378,33 @@ class TestRowIntegrity:
         assert report.failed == 1
         assert report.ok == 1
         assert "title" in (report.failures[0].reason or "")
+
+
+class TestLedgerWriting:
+    async def test_the_ledger_write_never_runs_on_the_event_loop(self) -> None:
+        """The append opens, writes and fsyncs — blocking work the loop must
+        not do, or every sibling chunk's request waits behind it."""
+        threads: list[str] = []
+
+        def write(_entry: LedgerEntry) -> None:
+            threads.append(threading.current_thread().name)
+
+        transport = ScriptedTransport(default="high")
+        report = await run_with(job_of(classify()), transport, write=write)
+
+        assert report.ok == 2
+        assert len(threads) == 2
+        assert threading.main_thread().name not in threads
+
+    async def test_every_decided_result_is_written_exactly_once(self) -> None:
+        written: list[tuple[str, str]] = []
+        transport = ScriptedTransport(default="high")
+
+        report = await run_with(
+            job_of(classify()),
+            transport,
+            write=lambda entry: written.append((entry.key, entry.outcome)),
+        )
+
+        assert report.ok == 2
+        assert sorted(written) == [("1", "ok"), ("2", "ok")]

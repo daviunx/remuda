@@ -1,5 +1,7 @@
 """FR-5/FR-6 — the run directory: crash-safe ledger, lock, resume refusal."""
 
+import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +104,21 @@ class TestRunStore:
         # No close(): read the file as a crash would leave it.
         written = (store.run_dir / LEDGER_FILENAME).read_text(encoding="utf-8")
         assert '"key":"1"' in written
+
+    def test_concurrent_appends_write_whole_lines(
+        self, tmp_path: Path, job: Job, input_file: Path
+    ) -> None:
+        """The engine appends from worker threads — no line may interleave."""
+        store = RunStore.create(tmp_path, build_lock(job, input_file, "0.1.0"))
+        keys = [str(number) for number in range(60)]
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda key: store.append(entry(key)), keys))
+        store.close()
+
+        written = (store.run_dir / LEDGER_FILENAME).read_text(encoding="utf-8")
+        parsed = [json.loads(line) for line in written.splitlines()]
+        assert sorted(record["key"] for record in parsed) == sorted(keys)
 
     def test_completed_excludes_failures_so_a_resume_retries_them(
         self, tmp_path: Path, job: Job, input_file: Path

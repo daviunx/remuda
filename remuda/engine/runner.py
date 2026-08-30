@@ -118,7 +118,7 @@ class Runner:
             EngineError: the run cannot be planned (unknown pool, a pool that
                 needs catalog discovery, an unreadable row key).
         """
-        self._seed(rows)
+        await self._seed(rows)
         try:
             for field in self._fields:
                 await self._run_field(field)
@@ -130,7 +130,7 @@ class Runner:
 
     # -- setup -------------------------------------------------------------
 
-    def _seed(self, rows: Sequence[Mapping[str, Any]]) -> None:
+    async def _seed(self, rows: Sequence[Mapping[str, Any]]) -> None:
         for row in rows:
             key = row_key(row, self._job.input.key)
             if key in self._rows:
@@ -143,15 +143,15 @@ class Runner:
             self._collected[key] = {}
             self._pending_fields[key] = len(self._fields)
         self._report.rows = len(self._rows)
-        self._seed_resumed()
+        await self._seed_resumed()
 
-    def _seed_resumed(self) -> None:
+    async def _seed_resumed(self) -> None:
         selected = {field.name for field in self._fields}
         for (key, name), entry in self._done.items():
             if key not in self._rows or name not in selected:
                 continue
             self._report.resumed_results += 1
-            self._record(entry, counted=True)
+            await self._record(entry, is_counted=True)
 
     def _lanes_for(self, field: FieldSpec) -> PoolLanes:
         pool_name = self._pool_name(field)
@@ -231,11 +231,11 @@ class Runner:
     # -- per-field execution -----------------------------------------------
 
     async def _run_field(self, field: FieldSpec) -> None:
-        items = self._eligible_items(field)
+        items = await self._eligible_items(field)
         if not items:
             return
         if field.kind == "map":
-            self._resolve_map(field, items)
+            await self._resolve_map(field, items)
             return
 
         by_key = {item.key: item for item in items}
@@ -251,20 +251,20 @@ class Runner:
                     lanes=lanes.ladder_for(index),
                     attempts_per_model=self._job.execution.attempts_per_model,
                 )
-            self._absorb(field, index, len(groups), result)
+            await self._absorb(field, index, len(groups), result)
 
         async with asyncio.TaskGroup() as group:
             for index, keys in enumerate(groups):
                 group.create_task(run_one(index, keys))
 
-    def _eligible_items(self, field: FieldSpec) -> list[ChunkItem]:
+    async def _eligible_items(self, field: FieldSpec) -> list[ChunkItem]:
         items: list[ChunkItem] = []
         for key, row in self._rows.items():
             if (key, field.name) in self._done:
                 continue
             skip = eligibility(field, key, row, self._derived[key])
             if skip is not None:
-                self._record_skip(skip)
+                await self._record_skip(skip)
                 continue
             if field.kind == "map":
                 items.append(ChunkItem(key=key, row=row, prompt=""))
@@ -272,12 +272,12 @@ class Runner:
             try:
                 prompt = field.render(row)
             except PromptRenderError as error:
-                self._record_failure(key, field.name, str(error))
+                await self._record_failure(key, field.name, str(error))
                 continue
             items.append(ChunkItem(key=key, row=row, prompt=prompt))
         return items
 
-    def _resolve_map(self, field: FieldSpec, items: Sequence[ChunkItem]) -> None:
+    async def _resolve_map(self, field: FieldSpec, items: Sequence[ChunkItem]) -> None:
         for index, item in enumerate(items):
             verdict = evaluate_map(field, item.row)
             entry = LedgerEntry(
@@ -287,15 +287,15 @@ class Runner:
                 value=verdict.value,
                 reason=None if verdict.is_valid else verdict.repair,
             )
-            self._record(entry)
+            await self._record(entry)
             self._emit(field, index, len(items), entry)
 
-    def _absorb(
+    async def _absorb(
         self, field: FieldSpec, index: int, chunks: int, result: ChunkResult
     ) -> None:
         entries = [self._entry_for(field, outcome) for outcome in result.outcomes]
         for entry in entries:
-            self._record(entry)
+            await self._record(entry)
         self._emit_chunk(field, index, chunks, entries, result)
 
     def _entry_for(self, field: FieldSpec, outcome: KeyOutcome) -> LedgerEntry:
@@ -316,17 +316,19 @@ class Runner:
 
     # -- recording ---------------------------------------------------------
 
-    def _record_skip(self, skip: Skip) -> None:
-        self._record(
+    async def _record_skip(self, skip: Skip) -> None:
+        await self._record(
             LedgerEntry(
                 key=skip.key, field=skip.field, outcome="skipped", reason=skip.reason
             )
         )
 
-    def _record_failure(self, key: str, field: str, reason: str) -> None:
-        self._record(LedgerEntry(key=key, field=field, outcome="failed", reason=reason))
+    async def _record_failure(self, key: str, field: str, reason: str) -> None:
+        await self._record(
+            LedgerEntry(key=key, field=field, outcome="failed", reason=reason)
+        )
 
-    def _record(self, entry: LedgerEntry, counted: bool = False) -> None:
+    async def _record(self, entry: LedgerEntry, is_counted: bool = False) -> None:
         if entry.outcome == "ok":
             self._report.ok += 1
             self._derived[entry.key][entry.field] = entry.value
@@ -339,8 +341,12 @@ class Runner:
             self._report.failures.append(entry)
 
         self._collected[entry.key][entry.field] = entry
-        if not counted and self._write is not None:
-            self._write(entry)
+        if not is_counted and self._write is not None:
+            # The ledger append opens, writes and fsyncs — blocking work that
+            # would stall every sibling chunk's HTTP call if it ran on the
+            # loop. The await still completes before the result is settled, so
+            # the durability the resume depends on is unchanged.
+            await asyncio.to_thread(self._write, entry)
         self._settle_row(entry.key)
 
     def _count_distribution(self, entry: LedgerEntry) -> None:

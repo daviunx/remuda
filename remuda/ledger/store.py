@@ -7,6 +7,7 @@ report can be re-printed and results re-rendered without calling a model again.
 import hashlib
 import json
 import os
+import threading
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -59,6 +60,11 @@ class RunStore:
     def __init__(self, run_dir: Path) -> None:
         self.run_dir = Path(run_dir)
         self._handle: TextIO | None = None
+        # `append` is called from a worker thread so the fsync never blocks the
+        # engine's event loop, and several chunks can decide at once. One lock
+        # keeps open/write/flush/fsync a single critical section: no two writers
+        # interleave, and no line is ever half-written.
+        self._lock = threading.Lock()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -106,10 +112,11 @@ class RunStore:
 
     def close(self) -> None:
         """Close the append handle, if one is open."""
-        handle = self._handle
-        if handle is not None:
-            handle.close()
-            self._handle = None
+        with self._lock:
+            handle = self._handle
+            if handle is not None:
+                handle.close()
+                self._handle = None
 
     # -- lock --------------------------------------------------------------
 
@@ -183,14 +190,20 @@ class RunStore:
 
         Flushed and fsync'd per line: a killed run must lose nothing that was
         already decided, which is what makes resume trustworthy (FR-5).
+
+        Blocking, and called from a worker thread by the engine. The lock makes
+        the whole write a single critical section, so concurrent callers append
+        whole lines in some order rather than interleaving one.
         """
-        handle = self._handle
-        if handle is None:
-            handle = (self.run_dir / LEDGER_FILENAME).open("a", encoding="utf-8")
-            self._handle = handle
-        handle.write(entry.model_dump_json() + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+        line = entry.model_dump_json() + "\n"
+        with self._lock:
+            handle = self._handle
+            if handle is None:
+                handle = (self.run_dir / LEDGER_FILENAME).open("a", encoding="utf-8")
+                self._handle = handle
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
 
     def entries(self) -> list[LedgerEntry]:
         """Every result recorded so far, in the order it was decided."""
