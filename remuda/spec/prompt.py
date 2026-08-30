@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from jinja2 import Environment, StrictUndefined, meta
+from jinja2.exceptions import TemplateError
 
 from remuda.spec.errors import PromptRenderError
 
@@ -31,7 +32,7 @@ def template_variables(template: str) -> frozenset[str]:
     """
     try:
         parsed = _ENVIRONMENT.parse(template)
-    except Exception as exc:  # jinja2.TemplateSyntaxError and friends
+    except TemplateError as exc:  # TemplateSyntaxError and friends
         raise PromptRenderError(f"template is not valid Jinja: {exc}") from exc
     return frozenset(meta.find_undeclared_variables(parsed))
 
@@ -55,5 +56,5 @@ def render_prompt(
     context = {name: row[name] for name in inputs}
     try:
         return _ENVIRONMENT.from_string(template).render(context)
-    except Exception as exc:  # re-raised as our own error type
+    except TemplateError as exc:  # UndefinedError, syntax, filter failures
         raise PromptRenderError(f"failed to render template: {exc}") from exc
