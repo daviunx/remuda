@@ -10,6 +10,7 @@ from typing import Any, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ProviderKind = Literal["openai_compat", "opencode"]
+CatalogKind = Literal["openrouter", "openai_compat", "ollama"]
 PoolStrategy = Literal["scatter", "waterfall"]
 DiscoverSort = Literal["throughput", "latency", "context", "price"]
 
@@ -31,6 +32,14 @@ class Provider(BaseModel):
         default=None,
         description="Name of the environment variable holding the API key.",
     )
+    catalog: CatalogKind | None = Field(
+        default=None,
+        description="Which catalog shape this provider's model list follows.",
+    )
+    command: str | None = Field(
+        default=None,
+        description="Executable for kind 'opencode' (default: opencode).",
+    )
     headers: dict[str, str] = Field(default_factory=dict)
     extra_body: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=120.0, gt=0)
@@ -46,6 +55,20 @@ class Provider(BaseModel):
                 f"provider '{self.name}': kind 'opencode' runs a local command "
                 "and takes no base_url"
             )
+        if self.command is not None:
+            if self.kind != "opencode":
+                raise ValueError(
+                    f"provider '{self.name}': 'command' is only meaningful for "
+                    "kind 'opencode'"
+                )
+            # The command is executed with shell=False, but a value carrying
+            # shell syntax means the operator expects a shell — say so rather
+            # than running something that will not do what they wrote.
+            if any(character in self.command for character in " \t;|&$`\n"):
+                raise ValueError(
+                    f"provider '{self.name}': 'command' must be a bare "
+                    "executable name or path, with no arguments or shell syntax"
+                )
         inline = sorted(
             name for name in self.headers if name.lower() in _CREDENTIAL_HEADERS
         )
@@ -72,8 +95,23 @@ class ModelConfig(BaseModel):
     rpm: int | None = Field(default=None, ge=1)
     max_cost_usd: float | None = Field(default=None, ge=0)
     context_length: int | None = Field(default=None, ge=1)
+    prompt_price_usd: float | None = Field(
+        default=None, ge=0, description="Price per prompt token, when known."
+    )
+    completion_price_usd: float | None = Field(
+        default=None, ge=0, description="Price per completion token, when known."
+    )
     reasoning_effort: str | None = None
     extra_body: dict[str, Any] = Field(default_factory=dict)
+
+    def cost_of(self, prompt_tokens: int, completion_tokens: int) -> float | None:
+        """What a call cost, when the catalog reported prices for this model."""
+        if self.prompt_price_usd is None or self.completion_price_usd is None:
+            return None
+        return (
+            prompt_tokens * self.prompt_price_usd
+            + completion_tokens * self.completion_price_usd
+        )
 
 
 class DiscoverQuery(BaseModel):

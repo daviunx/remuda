@@ -20,7 +20,12 @@ from remuda.transport.errors import (
     TransportConfigurationError,
     TransportError,
 )
-from remuda.transport.models import CompletionRequest, CompletionResult, Usage
+from remuda.transport.models import (
+    CompletionRequest,
+    CompletionResult,
+    Transport,
+    Usage,
+)
 
 #: Status codes that mean "try again later", not "this request is wrong".
 _TRANSIENT_STATUS = frozenset({408, 409, 500, 502, 503, 504, 529})
@@ -106,6 +111,20 @@ class OpenAICompatTransport:
         body.update(self._provider.extra_body)
         body.update(request.extra_body)
         return body
+
+
+def catalog_headers(provider: Provider) -> dict[str, str]:
+    """Headers for a read-only catalog request against this provider.
+
+    Unlike a completion, a missing key is not fatal here: many catalogs are
+    readable anonymously, and refusing to list models because a key is unset
+    would be unhelpful.
+    """
+    headers = dict(provider.headers)
+    key = os.environ.get(provider.key_env or "")
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
 
 
 def build_request_extras(model: ModelConfig) -> dict[str, Any]:
@@ -196,15 +215,20 @@ def _usage(raw: Any) -> Usage:
     )
 
 
-def build_transport(provider: Provider) -> OpenAICompatTransport:
+def build_transport(provider: Provider) -> Transport:
     """Build the transport a provider's kind calls for.
 
     Raises:
-        TransportError: the provider's kind has no transport yet.
+        TransportError: the provider's kind has no transport.
     """
     if provider.kind == "openai_compat":
         return OpenAICompatTransport(provider)
+    if provider.kind == "opencode":
+        # Imported here: the opencode transport imports this module for its
+        # error types, so a module-level import would be circular.
+        from remuda.transport.opencode import OpencodeTransport  # noqa: PLC0415
+
+        return OpencodeTransport(provider)
     raise TransportError(
-        f"provider '{provider.name}' has kind '{provider.kind}', which has no "
-        "transport yet"
+        f"provider '{provider.name}' has kind '{provider.kind}', which has no transport"
     )
