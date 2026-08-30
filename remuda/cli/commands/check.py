@@ -9,11 +9,11 @@ from remuda.cli.console import (
     EXIT_ERROR,
     print_defects,
     print_header,
-    print_info,
     print_success,
 )
-from remuda.cli.options import resolve_config_dirs
+from remuda.cli.options import resolve_registry
 from remuda.inspection import check_job_dir
+from remuda.registry.errors import RegistryValidationError
 
 
 def check(
@@ -24,6 +24,7 @@ def check(
             exists=False,
         ),
     ],
+    *,
     config_dir: Annotated[
         list[Path] | None,
         typer.Option(
@@ -35,27 +36,37 @@ def check(
             ),
         ),
     ] = None,
+    no_bootstrap: Annotated[
+        bool,
+        typer.Option(
+            "--no-bootstrap",
+            help="Ignore providers implied by the environment.",
+        ),
+    ] = False,
 ) -> None:
     """
     Lint a job definition and its registry references.
 
     Checks the declaration, the input file's real columns, and every pool the
     job names — refusing with the specific defect before any model is called.
-    Makes zero network calls.
+    Makes no model calls.
 
     [bold cyan]Examples:[/bold cyan]
 
         # Lint a job against the default registry layers
         remuda check jobs/rally-severity
 
-        # Lint against a specific registry directory
-        remuda check jobs/rally-severity --config-dir ./.remuda
+        # Lint against a specific registry directory only
+        remuda check jobs/rally-severity --config-dir ./.remuda --no-bootstrap
     """
-    config_dirs = resolve_config_dirs(config_dir)
     print_header(f"Checking {job_dir}")
-    print_info("registry layers: " + ", ".join(str(path) for path in config_dirs))
+    try:
+        registry = resolve_registry(config_dir, bootstrap=not no_bootstrap)
+    except RegistryValidationError as error:
+        print_defects("Registry is not usable", error.source, error.defects)
+        raise typer.Exit(code=EXIT_ERROR) from error
 
-    report = check_job_dir(job_dir, config_dirs)
+    report = check_job_dir(job_dir, registry)
     if not report.is_clean:
         print_defects("Job is not runnable", str(report.source), report.defects)
         raise typer.Exit(code=EXIT_ERROR)

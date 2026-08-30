@@ -12,6 +12,17 @@ JobDirFactory = Callable[..., Path]
 
 
 @pytest.fixture(autouse=True)
+def _no_environment_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the operator's own environment out of the unit suite.
+
+    Zero-config bootstrap (FR-3b) reads OPENROUTER_API_KEY and probes a local
+    port. A developer with either present must not get different unit-test
+    behavior from one without.
+    """
+    monkeypatch.setenv("REMUDA_NO_BOOTSTRAP", "1")
+
+
+@pytest.fixture(autouse=True)
 def _no_outbound_connections(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Fail loudly if anything under test reaches the network.
 

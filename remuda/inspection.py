@@ -9,8 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from remuda.registry.errors import RegistryValidationError
-from remuda.registry.loader import load_registry
+from remuda.registry.registry import Registry
 from remuda.rows import RowSourceError, read_columns, read_rows, row_key
 from remuda.spec.errors import PromptRenderError, SpecValidationError
 from remuda.spec.lint import lint_against_columns, lint_placeholders
@@ -51,7 +50,7 @@ class PreviewReport:
     notes: tuple[str, ...] = ()
 
 
-def check_job_dir(job_dir: Path, config_dirs: Sequence[Path]) -> CheckReport:
+def check_job_dir(job_dir: Path, registry: Registry) -> CheckReport:
     """Lint a job directory: its spec, its input file, and its pool names."""
     directory = Path(job_dir)
     try:
@@ -61,7 +60,7 @@ def check_job_dir(job_dir: Path, config_dirs: Sequence[Path]) -> CheckReport:
 
     defects: list[str] = list(lint_placeholders(job))
     defects.extend(_input_defects(directory, job))
-    defects.extend(_registry_defects(job, config_dirs))
+    defects.extend(registry.check_job(job))
     return CheckReport(source=directory, job=job, defects=tuple(defects))
 
 
@@ -119,11 +118,3 @@ def _input_defects(directory: Path, job: Job) -> list[str]:
     except RowSourceError as error:
         return [f"input '{job.input.path}': {error}"]
     return lint_against_columns(job, columns)
-
-
-def _registry_defects(job: Job, config_dirs: Sequence[Path]) -> list[str]:
-    try:
-        registry = load_registry(config_dirs)
-    except RegistryValidationError as error:
-        return list(error.defects)
-    return registry.check_job(job)

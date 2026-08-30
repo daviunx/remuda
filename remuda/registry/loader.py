@@ -36,15 +36,22 @@ def default_config_dirs(project_root: Path | None = None) -> tuple[Path, ...]:
     return (user_dir, project_dir)
 
 
-def load_registry(config_dirs: Sequence[Path]) -> Registry:
-    """Load and merge every layer, then check the merged registry.
+def load_registry(config_dirs: Sequence[Path], validate: bool = True) -> Registry:
+    """Load and merge every configuration layer.
+
+    Args:
+        config_dirs: layers, in order; later ones override by name.
+        validate: check references on the merged result. Pass False when a
+            further layer (the environment bootstrap) still has to be merged
+            in — an explicit pool may legitimately name an implicit model.
 
     Raises:
-        RegistryValidationError: a layer is malformed, or the merged
-            registry holds a dangling reference.
+        RegistryValidationError: a layer is malformed, or (when validating)
+            the merged registry holds a dangling reference.
     """
     merged = Registry.layered(*(load_layer(directory) for directory in config_dirs))
-    merged.validate_or_raise()
+    if validate:
+        merged.validate_or_raise()
     return merged
 
 

@@ -1,9 +1,16 @@
-"""Options shared by several commands."""
+"""Options and registry resolution shared by several commands."""
 
 from collections.abc import Sequence
 from pathlib import Path
 
-from remuda.registry.loader import default_config_dirs
+from remuda.cli.console import print_info
+from remuda.registry.bootstrap import (
+    bootstrap_registry,
+    probe_local_endpoint,
+    with_bootstrap,
+)
+from remuda.registry.loader import default_config_dirs, load_registry
+from remuda.registry.registry import Registry
 
 
 def resolve_config_dirs(declared: Sequence[Path] | None) -> tuple[Path, ...]:
@@ -15,3 +22,31 @@ def resolve_config_dirs(declared: Sequence[Path] | None) -> tuple[Path, ...]:
     if declared:
         return tuple(Path(path) for path in declared)
     return default_config_dirs()
+
+
+def resolve_registry(
+    declared: Sequence[Path] | None, bootstrap: bool = True
+) -> Registry:
+    """Load the configured registry, layered over what the environment implies.
+
+    Every implicit provider or pool is announced on stderr, and an explicit
+    entry of the same name always overrides it (FR-3b).
+
+    Raises:
+        RegistryValidationError: a layer is malformed, or the merged registry
+            holds a dangling reference.
+    """
+    config_dirs = resolve_config_dirs(declared)
+    print_info("registry layers: " + ", ".join(str(path) for path in config_dirs))
+    # Validated only after the bootstrap layer is merged in: an explicit
+    # pool may legitimately name a model the environment provides.
+    explicit = load_registry(config_dirs, validate=not bootstrap)
+    if not bootstrap:
+        return explicit
+
+    inferred = bootstrap_registry(probe=probe_local_endpoint)
+    for announcement in inferred.announcements:
+        print_info(announcement)
+    merged = with_bootstrap(explicit, inferred)
+    merged.validate_or_raise()
+    return merged
