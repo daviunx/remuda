@@ -8,7 +8,7 @@ here — it lives in tests/unit/conftest.py.
 
 import json
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -27,6 +27,7 @@ class FakeModelServer(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), _Handler)
         self.script: dict[str, list[Reply]] = {}
         self.answers: dict[str, Reply] = {}
+        self.answer_fn: Callable[[str], str] | None = None
         self.default: Reply = "high"
         self.catalog_payload: dict[str, Any] = {"data": []}
         self.requests: list[dict[str, Any]] = []
@@ -45,6 +46,8 @@ class FakeModelServer(ThreadingHTTPServer):
         concurrently, so an order-based script cannot say "answer this row
         and not that one" without racing.
         """
+        if self.answer_fn is not None:
+            return self.answer_fn(prompt)
         for fragment, reply in self.answers.items():
             if fragment in prompt:
                 return reply

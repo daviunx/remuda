@@ -15,7 +15,9 @@ import httpx
 
 from remuda.catalog.resolve import ResolvedPool, resolve_pool
 from remuda.engine.progress import ProgressCallback
-from remuda.engine.runner import LedgerWriter, Runner, Sink, TransportFactory
+from remuda.engine.runner import LedgerWriter, RowResult, Runner, Sink, TransportFactory
+from remuda.errors import RemudaError
+from remuda.inline import one_shot_job, one_shot_row
 from remuda.ledger.models import LedgerEntry, Report
 from remuda.ledger.resume import OpenedRun, build_lock, open_run
 from remuda.ledger.store import RUNS_DIRNAME, RunStore, new_run_id
@@ -198,3 +200,45 @@ async def _resolved_pools(
     if resolved:
         opened.store.write_resolved_pools(list(resolved.values()))
     return resolved
+
+
+class OneShotFailedError(RemudaError):
+    """A one-shot request produced no valid answer (FR-11)."""
+
+
+async def one_shot(
+    prompt: str,
+    registry: Registry,
+    *,
+    pool: str,
+    vocabulary: Sequence[str] | None = None,
+    piped: str | None = None,
+    progress: ProgressCallback | None = None,
+    transport_factory: TransportFactory = build_transport,
+) -> str:
+    """Answer one ad-hoc request through the ordinary ladder (FR-11).
+
+    Nothing is written: no run directory, no ledger, no report.
+
+    Raises:
+        OneShotFailedError: the pool produced no valid answer. The caller
+            must not print anything to stdout in that case.
+        EngineError: the request cannot be planned.
+    """
+    job = one_shot_job(prompt, pool=pool, vocabulary=vocabulary)
+    answers: list[RowResult] = []
+    report = await run(
+        job,
+        [one_shot_row(piped)],
+        registry,
+        sink=answers.append,
+        progress=progress,
+        transport_factory=transport_factory,
+    )
+    if not report.is_successful or not answers:
+        reason = report.failures[0].reason if report.failures else "no answer"
+        raise OneShotFailedError(reason or "the pool produced no valid answer")
+    value = answers[0].value(job.fields[0].name)
+    if value is None:
+        raise OneShotFailedError("the pool produced no valid answer")
+    return str(value)
