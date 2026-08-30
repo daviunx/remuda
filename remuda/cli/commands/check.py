@@ -11,38 +11,24 @@ from remuda.cli.console import (
     print_header,
     print_success,
 )
-from remuda.cli.options import resolve_registry
+from remuda.cli.options import ConfigDirs, NoBootstrap, resolve_registry
 from remuda.inspection import check_job_dir
 from remuda.registry.errors import RegistryValidationError
 
+JobDirArgument = Annotated[
+    Path,
+    typer.Argument(
+        help="Job directory containing [cyan]job.yaml[/cyan]",
+        exists=False,
+    ),
+]
+
 
 def check(
-    job_dir: Annotated[
-        Path,
-        typer.Argument(
-            help="Job directory containing [cyan]job.yaml[/cyan]",
-            exists=False,
-        ),
-    ],
+    job_dir: JobDirArgument,
     *,
-    config_dir: Annotated[
-        list[Path] | None,
-        typer.Option(
-            "--config-dir",
-            "-c",
-            help=(
-                "Registry directory. Repeatable — later layers override "
-                "earlier ones. Defaults to the user and project directories."
-            ),
-        ),
-    ] = None,
-    no_bootstrap: Annotated[
-        bool,
-        typer.Option(
-            "--no-bootstrap",
-            help="Ignore providers implied by the environment.",
-        ),
-    ] = False,
+    config_dir: ConfigDirs = None,
+    no_bootstrap: NoBootstrap = False,
 ) -> None:
     """
     Lint a job definition and its registry references.
@@ -61,7 +47,7 @@ def check(
     """
     print_header(f"Checking {job_dir}")
     try:
-        registry = resolve_registry(config_dir, bootstrap=not no_bootstrap)
+        registry = resolve_registry(config_dir, should_bootstrap=not no_bootstrap)
     except RegistryValidationError as error:
         print_defects("Registry is not usable", error.source, error.defects)
         raise typer.Exit(code=EXIT_ERROR) from error

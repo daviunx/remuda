@@ -1,7 +1,6 @@
 """`remuda models list` — what a provider currently serves (FR-3, FR-8)."""
 
 import asyncio
-from pathlib import Path
 from typing import Annotated
 
 import httpx
@@ -12,7 +11,7 @@ from remuda.catalog.adapters import adapter_for
 from remuda.catalog.errors import CatalogError
 from remuda.catalog.models import CatalogModel
 from remuda.cli.console import EXIT_ERROR, data_table, print_error, print_info
-from remuda.cli.options import resolve_registry
+from remuda.cli.options import ConfigDirs, NoBootstrap, resolve_registry
 from remuda.registry.errors import RegistryError, RegistryValidationError
 from remuda.registry.registry import Registry
 
@@ -34,16 +33,8 @@ def list_models(
     limit: Annotated[
         int | None, typer.Option("--limit", "-l", min=1, help="Show at most N.")
     ] = None,
-    config_dir: Annotated[
-        list[Path] | None,
-        typer.Option("--config-dir", "-c", help="Registry layer. Repeatable."),
-    ] = None,
-    no_bootstrap: Annotated[
-        bool,
-        typer.Option(
-            "--no-bootstrap", help="Ignore providers implied by the environment."
-        ),
-    ] = False,
+    config_dir: ConfigDirs = None,
+    no_bootstrap: NoBootstrap = False,
 ) -> None:
     """
     List the models a provider currently serves.
@@ -58,7 +49,7 @@ def list_models(
         remuda models list local
     """
     try:
-        registry = resolve_registry(config_dir, bootstrap=not no_bootstrap)
+        registry = resolve_registry(config_dir, should_bootstrap=not no_bootstrap)
         catalog = asyncio.run(_fetch(registry, provider))
     except (RegistryError, RegistryValidationError, CatalogError) as error:
         print_error(str(error))

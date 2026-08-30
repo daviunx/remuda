@@ -157,7 +157,7 @@ def _coerce(declared: ExtractProperty, value: Any) -> Verdict:
     if declared.type == "boolean":
         return _coerce_boolean(value)
     if declared.type in {"number", "integer"}:
-        return _coerce_number(value, whole=declared.type == "integer")
+        return _coerce_number(value, is_whole=declared.type == "integer")
     text = str(value).strip()
     if not text:
         return Verdict.invalid("the value is empty.")
@@ -186,12 +186,12 @@ def _coerce_boolean(value: Any) -> Verdict:
     return Verdict.invalid(f"'{_excerpt(str(value))}' is not true or false.")
 
 
-def _coerce_number(value: Any, whole: bool) -> Verdict:
+def _coerce_number(value: Any, is_whole: bool) -> Verdict:
     match = _NUMBER.search(str(value))
     if match is None:
         return Verdict.invalid(f"'{_excerpt(str(value))}' is not a number.")
     number = float(match.group())
-    if not whole:
+    if not is_whole:
         return Verdict.valid(number)
     if number != int(number):
         return Verdict.invalid(f"{number} is not a whole number.")

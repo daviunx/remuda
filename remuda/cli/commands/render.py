@@ -12,43 +12,51 @@ from remuda.rows import RowSourceError, read_rows
 
 STDOUT = Path("-")
 
+RunDirArgument = Annotated[
+    Path, typer.Argument(help="Run directory under [cyan].runs/[/cyan]")
+]
+FormatOption = Annotated[
+    RenderFormat,
+    typer.Option("--format", "-f", help="csv (default), jsonl or json."),
+]
+OutputOption = Annotated[
+    Path,
+    typer.Option("--output", "-o", help="File to write, or - for stdout."),
+]
+EnrichOption = Annotated[
+    bool,
+    typer.Option(
+        "--enrich",
+        help="Return the input file with the derived columns added.",
+    ),
+]
+FillMissingOption = Annotated[
+    bool,
+    typer.Option("--fill-missing", help="Never overwrite a non-empty cell."),
+]
+PassthroughOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--passthrough",
+        "-P",
+        help="Repeatable input column to carry through; * for all.",
+    ),
+]
+FieldsOption = Annotated[
+    list[str] | None,
+    typer.Option("--field", "-F", help="Repeatable. Render only these fields."),
+]
+
 
 def render_run(
-    run_dir: Annotated[
-        Path, typer.Argument(help="Run directory under [cyan].runs/[/cyan]")
-    ],
+    run_dir: RunDirArgument,
     *,
-    output_format: Annotated[
-        RenderFormat,
-        typer.Option("--format", "-f", help="csv (default), jsonl or json."),
-    ] = "csv",
-    output: Annotated[
-        Path,
-        typer.Option("--output", "-o", help="File to write, or - for stdout."),
-    ] = STDOUT,
-    enrich: Annotated[
-        bool,
-        typer.Option(
-            "--enrich",
-            help="Return the input file with the derived columns added.",
-        ),
-    ] = False,
-    fill_missing: Annotated[
-        bool,
-        typer.Option("--fill-missing", help="Never overwrite a non-empty cell."),
-    ] = False,
-    passthrough: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--passthrough",
-            "-P",
-            help="Repeatable input column to carry through; * for all.",
-        ),
-    ] = None,
-    only: Annotated[
-        list[str] | None,
-        typer.Option("--field", "-F", help="Repeatable. Render only these fields."),
-    ] = None,
+    output_format: FormatOption = "csv",
+    output: OutputOption = STDOUT,
+    enrich: EnrichOption = False,
+    fill_missing: FillMissingOption = False,
+    passthrough: PassthroughOption = None,
+    only: FieldsOption = None,
 ) -> None:
     """
     Render a finished run's results. No model is called.
@@ -70,7 +78,7 @@ def render_run(
     try:
         store = RunStore.open(run_dir)
         job = store.read_job()
-        rows = _input_rows(store, needed=enrich or bool(passthrough))
+        rows = _input_rows(store, is_needed=enrich or bool(passthrough))
         rendered = render(
             RenderRequest(
                 job=job,
@@ -94,9 +102,9 @@ def render_run(
     print_info(f"wrote {output}")
 
 
-def _input_rows(store: RunStore, needed: bool) -> list[dict[str, object]] | None:
+def _input_rows(store: RunStore, is_needed: bool) -> list[dict[str, object]] | None:
     """Read the run's input file — required by enrich and passthrough."""
-    if not needed:
+    if not is_needed:
         return None
     declared = store.read_lock().input_path
     if declared is None:

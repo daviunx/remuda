@@ -16,7 +16,7 @@ from remuda.cli.console import (
     print_error,
     print_info,
 )
-from remuda.cli.options import resolve_registry
+from remuda.cli.options import ConfigDirs, NoBootstrap, resolve_registry
 from remuda.health import MemberHealth, alive_count, probe_pool
 from remuda.registry.errors import RegistryError, RegistryValidationError
 from remuda.registry.registry import Registry
@@ -27,18 +27,6 @@ pools_app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
-
-ConfigDirs = Annotated[
-    list[Path] | None,
-    typer.Option("--config-dir", "-c", help="Registry layer. Repeatable."),
-]
-NoBootstrap = Annotated[
-    bool,
-    typer.Option(
-        "--no-bootstrap",
-        help="Ignore providers implied by the environment.",
-    ),
-]
 
 
 @pools_app.command("show")
@@ -61,7 +49,7 @@ def show(
 
         remuda pools show free --no-bootstrap
     """
-    registry = _registry(config_dir, bootstrap=not no_bootstrap)
+    registry = _registry(config_dir, should_bootstrap=not no_bootstrap)
     resolved = _resolve(registry, name)
     data_table.print(_membership_table(resolved))
 
@@ -86,7 +74,7 @@ def check(
 
         remuda pools check local -c ./.remuda
     """
-    registry = _registry(config_dir, bootstrap=not no_bootstrap)
+    registry = _registry(config_dir, should_bootstrap=not no_bootstrap)
     try:
         resolved, results = asyncio.run(_probe(registry, name))
     except (RegistryError, CatalogError) as error:
@@ -104,9 +92,9 @@ async def _probe(
         return await probe_pool(name, registry, client)
 
 
-def _registry(config_dir: list[Path] | None, bootstrap: bool) -> Registry:
+def _registry(config_dir: list[Path] | None, should_bootstrap: bool) -> Registry:
     try:
-        return resolve_registry(config_dir, bootstrap=bootstrap)
+        return resolve_registry(config_dir, should_bootstrap=should_bootstrap)
     except RegistryValidationError as error:
         print_error(str(error))
         raise typer.Exit(code=EXIT_ERROR) from error

@@ -9,6 +9,7 @@ Three shapes, one engine (FR-4, FR-5, FR-6, FR-11, FR-13):
 
 import asyncio
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -26,7 +27,7 @@ from remuda.cli.console import (
     print_header,
     print_info,
 )
-from remuda.cli.options import resolve_registry
+from remuda.cli.options import ConfigDirs, NoBootstrap, resolve_registry
 from remuda.cli.progress import print_progress
 from remuda.cli.reporting import print_report
 from remuda.engine.plan import EngineError
@@ -48,84 +49,102 @@ RUN_FAILURES = (
     TransportError,
 )
 
+TargetArgument = Annotated[
+    str,
+    typer.Argument(
+        help=(
+            "A job directory, or the prompt itself for an inline bulk "
+            "run ([cyan]--input[/cyan]) or a one-shot request."
+        )
+    ),
+]
+InputFileOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--input",
+        "-i",
+        help="Input file for an inline bulk run (CSV, JSONL or JSON).",
+    ),
+]
+FieldOption = Annotated[
+    str,
+    typer.Option("--field", help="Name of the column an inline run derives."),
+]
+VocabOption = Annotated[
+    str | None,
+    typer.Option(
+        "--vocab",
+        "-v",
+        help="Comma-separated closed vocabulary the answer must come from.",
+    ),
+]
+LimitOption = Annotated[
+    int | None,
+    typer.Option("--limit", "-l", min=1, help="Derive only the first N rows."),
+]
+OnlyOption = Annotated[
+    list[str] | None,
+    typer.Option("--only", "-O", help="Repeatable. Derive only these fields."),
+]
+PoolOption = Annotated[
+    str | None,
+    typer.Option("--pool", "-p", help="Pool to answer from."),
+]
+FillMissingOption = Annotated[
+    str | None,
+    typer.Option(
+        "--fill-missing",
+        help="Only derive rows whose named column is empty.",
+    ),
+]
+OutputOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--output",
+        "-o",
+        help="Where an inline run writes its result (default: stdout).",
+    ),
+]
+FreshOption = Annotated[
+    bool,
+    typer.Option("--fresh", help="Start a new run instead of resuming."),
+]
+RunsDirOption = Annotated[
+    Path | None,
+    typer.Option("--runs-dir", help="Where run directories live."),
+]
+
+
+@dataclass(frozen=True)
+class RunOptions:
+    """What the three shapes select from, resolved once from the flags."""
+
+    field: str
+    vocabulary: tuple[str, ...] | None
+    limit: int | None
+    only: list[str] | None
+    pool: str | None
+    fill_missing: str | None
+    output: Path | None
+    is_fresh: bool
+    runs_dir: Path | None
+
 
 def run(
-    target: Annotated[
-        str,
-        typer.Argument(
-            help=(
-                "A job directory, or the prompt itself for an inline bulk "
-                "run ([cyan]--input[/cyan]) or a one-shot request."
-            )
-        ),
-    ],
+    target: TargetArgument,
     *,
-    input_file: Annotated[
-        Path | None,
-        typer.Option(
-            "--input",
-            "-i",
-            help="Input file for an inline bulk run (CSV, JSONL or JSON).",
-        ),
-    ] = None,
-    field: Annotated[
-        str,
-        typer.Option("--field", help="Name of the column an inline run derives."),
-    ] = "answer",
-    vocabulary: Annotated[
-        str | None,
-        typer.Option(
-            "--vocab",
-            "-v",
-            help="Comma-separated closed vocabulary the answer must come from.",
-        ),
-    ] = None,
-    limit: Annotated[
-        int | None,
-        typer.Option("--limit", "-l", min=1, help="Derive only the first N rows."),
-    ] = None,
-    only: Annotated[
-        list[str] | None,
-        typer.Option("--only", "-O", help="Repeatable. Derive only these fields."),
-    ] = None,
-    pool: Annotated[
-        str | None,
-        typer.Option("--pool", "-p", help="Pool to answer from."),
-    ] = None,
-    fill_missing: Annotated[
-        str | None,
-        typer.Option(
-            "--fill-missing",
-            help="Only derive rows whose named column is empty.",
-        ),
-    ] = None,
-    output: Annotated[
-        Path | None,
-        typer.Option(
-            "--output",
-            "-o",
-            help="Where an inline run writes its result (default: stdout).",
-        ),
-    ] = None,
-    fresh: Annotated[
-        bool,
-        typer.Option("--fresh", help="Start a new run instead of resuming."),
-    ] = False,
-    runs_dir: Annotated[
-        Path | None,
-        typer.Option("--runs-dir", help="Where run directories live."),
-    ] = None,
-    config_dir: Annotated[
-        list[Path] | None,
-        typer.Option("--config-dir", "-c", help="Registry layer. Repeatable."),
-    ] = None,
-    no_bootstrap: Annotated[
-        bool,
-        typer.Option(
-            "--no-bootstrap",
-            help="Ignore providers implied by the environment.",
-        ),
-    ] = False,
+    input_file: InputFileOption = None,
+    field: FieldOption = "answer",
+    vocabulary: VocabOption = None,
+    limit: LimitOption = None,
+    only: OnlyOption = None,
+    pool: PoolOption = None,
+    fill_missing: FillMissingOption = None,
+    output: OutputOption = None,
+    fresh: FreshOption = False,
+    runs_dir: RunsDirOption = None,
+    config_dir: ConfigDirs = None,
+    no_bootstrap: NoBootstrap = False,
 ) -> None:
     """
     Run a job, an inline bulk request, or a single question.
@@ -147,54 +166,30 @@ def run(
         # One question, answer only, composes in a pipeline
         remuda run "Name the capital of Spain" -p cheap | tr a-z A-Z
     """
-    registry = _registry(config_dir, bootstrap=not no_bootstrap)
-    labels = _vocabulary(vocabulary)
+    registry = _registry(config_dir, should_bootstrap=not no_bootstrap)
+    options = RunOptions(
+        field=field,
+        vocabulary=_vocabulary(vocabulary),
+        limit=limit,
+        only=only,
+        pool=pool,
+        fill_missing=fill_missing,
+        output=output,
+        is_fresh=fresh,
+        runs_dir=runs_dir,
+    )
     job_dir = Path(target)
-
     if job_dir.is_dir():
-        _run_job_directory(
-            job_dir,
-            registry=registry,
-            limit=limit,
-            only=only,
-            pool=pool,
-            fill_missing=fill_missing,
-            fresh=fresh,
-            runs_dir=runs_dir,
-        )
-        return
-
-    if input_file is not None:
-        try:
-            run_inline(
-                prompt=target,
-                input_file=input_file,
-                registry=registry,
-                field=field,
-                vocabulary=labels,
-                pool=pool,
-                limit=limit,
-                fill_missing=fill_missing,
-                output=output,
-                fresh=fresh,
-                runs_dir=runs_dir,
-            )
-        except RUN_FAILURES as error:
-            print_error(str(error))
-            raise typer.Exit(code=EXIT_ERROR) from error
-        return
-
-    _run_one_shot(target, registry=registry, pool=pool, vocabulary=labels)
+        _run_job_directory(job_dir, registry, options)
+    elif input_file is not None:
+        _run_inline_bulk(target, input_file, registry, options)
+    else:
+        _run_one_shot(target, registry, options)
 
 
-def _run_one_shot(
-    prompt: str,
-    registry: Registry,
-    pool: str | None,
-    vocabulary: tuple[str, ...] | None,
-) -> None:
+def _run_one_shot(prompt: str, registry: Registry, options: RunOptions) -> None:
     """FR-11: the answer, and nothing else, on standard output."""
-    if not pool:
+    if not options.pool:
         print_error(
             "a one-shot request needs a pool to answer from",
             suggestion="Add --pool <name>, or `remuda pools show` to see them.",
@@ -207,8 +202,8 @@ def _run_one_shot(
             one_shot(
                 prompt,
                 registry,
-                pool=pool,
-                vocabulary=vocabulary,
+                pool=options.pool,
+                vocabulary=options.vocabulary,
                 piped=piped,
             )
         )
@@ -222,29 +217,42 @@ def _run_one_shot(
     data.print(answer)
 
 
-def _run_job_directory(
-    job_dir: Path,
-    *,
-    registry: Registry,
-    limit: int | None,
-    only: list[str] | None,
-    pool: str | None,
-    fill_missing: str | None,
-    fresh: bool,
-    runs_dir: Path | None,
+def _run_inline_bulk(
+    prompt: str, input_file: Path, registry: Registry, options: RunOptions
 ) -> None:
+    """FR-13: a whole bulk run declared on the command line."""
+    try:
+        run_inline(
+            prompt=prompt,
+            input_file=input_file,
+            registry=registry,
+            field=options.field,
+            vocabulary=options.vocabulary,
+            pool=options.pool,
+            limit=options.limit,
+            fill_missing=options.fill_missing,
+            output=options.output,
+            fresh=options.is_fresh,
+            runs_dir=options.runs_dir,
+        )
+    except RUN_FAILURES as error:
+        print_error(str(error))
+        raise typer.Exit(code=EXIT_ERROR) from error
+
+
+def _run_job_directory(job_dir: Path, registry: Registry, options: RunOptions) -> None:
     print_header(f"Running {job_dir}")
     try:
         outcome = asyncio.run(
             run_job_dir(
                 job_dir,
                 registry=registry,
-                runs_root=runs_dir,
-                fresh=fresh,
-                limit=limit,
-                pool=pool,
-                only=only,
-                fill_missing=fill_missing,
+                runs_root=options.runs_dir,
+                fresh=options.is_fresh,
+                limit=options.limit,
+                pool=options.pool,
+                only=options.only,
+                fill_missing=options.fill_missing,
                 progress=print_progress,
             )
         )
@@ -270,9 +278,9 @@ def _run_job_directory(
         raise typer.Exit(code=EXIT_ERROR)
 
 
-def _registry(config_dir: list[Path] | None, bootstrap: bool) -> Registry:
+def _registry(config_dir: list[Path] | None, should_bootstrap: bool) -> Registry:
     try:
-        return resolve_registry(config_dir, bootstrap=bootstrap)
+        return resolve_registry(config_dir, should_bootstrap=should_bootstrap)
     except RegistryValidationError as error:
         print_defects("Registry is not usable", error.source, error.defects)
         raise typer.Exit(code=EXIT_ERROR) from error
