@@ -4,7 +4,7 @@ import typer
 from rich.panel import Panel
 
 from remuda import __version__
-from remuda.cli.commands import check, init, preview
+from remuda.cli.commands import check, init, preview, render_run, report, run
 from remuda.cli.console import EXIT_INTERRUPTED, diagnostics
 
 app = typer.Typer(
@@ -22,8 +22,11 @@ app = typer.Typer(
     add_completion=True,
 )
 
+app.command("run")(run)
 app.command("check")(check)
 app.command("preview")(preview)
+app.command("render")(render_run)
+app.command("report")(report)
 app.command("init")(init)
 
 

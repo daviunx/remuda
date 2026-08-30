@@ -5,6 +5,10 @@ the next. Public API surface lives here; internal module paths are not a
 contract.
 """
 
+from remuda.api import JobRunOutcome, run, run_job_dir, run_sync
+from remuda.engine.plan import EngineError
+from remuda.engine.progress import ProgressEvent
+from remuda.engine.runner import RowResult, Runner
 from remuda.errors import RemudaError
 from remuda.inspection import (
     CheckReport,
@@ -12,6 +16,16 @@ from remuda.inspection import (
     RenderedPrompt,
     check_job_dir,
     preview_job,
+)
+from remuda.ledger import (
+    LedgerEntry,
+    RenderError,
+    RenderRequest,
+    Report,
+    ResumeRefusedError,
+    RunStore,
+    SpecLock,
+    render,
 )
 from remuda.registry import (
     DiscoverQuery,
@@ -39,38 +53,76 @@ from remuda.spec import (
     ScoreRange,
     SpecValidationError,
 )
+from remuda.transport import (
+    CompletionRequest,
+    CompletionResult,
+    PermanentTransportError,
+    RateLimitedError,
+    TransientTransportError,
+    Transport,
+    TransportError,
+    Usage,
+)
+from remuda.validate import Outcome, Verdict, validate_answer
+from remuda.version import __version__
 
 __all__ = [
     "CheckReport",
+    "CompletionRequest",
+    "CompletionResult",
     "DiscoverQuery",
+    "EngineError",
     "ExtractSchema",
     "FieldSpec",
     "GenerateConstraints",
     "InputSpec",
     "Job",
+    "JobRunOutcome",
+    "LedgerEntry",
     "MapTable",
     "ModelConfig",
+    "Outcome",
+    "PermanentTransportError",
     "Pool",
     "PoolEntry",
     "Precondition",
     "PreviewReport",
+    "ProgressEvent",
     "PromptRenderError",
     "PromptSpec",
     "Provider",
+    "RateLimitedError",
     "Registry",
     "RegistryError",
     "RegistryValidationError",
     "RemudaError",
+    "RenderError",
+    "RenderRequest",
     "RenderedPrompt",
+    "Report",
+    "ResumeRefusedError",
+    "RowResult",
     "RowSourceError",
+    "RunStore",
+    "Runner",
     "ScoreRange",
+    "SpecLock",
     "SpecValidationError",
+    "TransientTransportError",
+    "Transport",
+    "TransportError",
+    "Usage",
+    "Verdict",
+    "__version__",
     "check_job_dir",
     "default_config_dirs",
     "load_registry",
     "preview_job",
     "read_columns",
     "read_rows",
+    "render",
+    "run",
+    "run_job_dir",
+    "run_sync",
+    "validate_answer",
 ]
-
-__version__ = "0.1.0"
