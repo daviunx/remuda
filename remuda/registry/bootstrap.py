@@ -138,7 +138,7 @@ def _free_pool() -> Pool:
                 discover=DiscoverQuery(
                     provider=OPENROUTER_PROVIDER,
                     free=True,
-                    sort="throughput",
+                    sort="context",
                     take=4,
                 )
             ),

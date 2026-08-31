@@ -13,6 +13,9 @@ until it has a second real consumer.
 
 ### Fixed
 
+- The bootstrap's implicit `free` pool sorted by `throughput`, a key
+  OpenRouter's live model list never carries — zero-config refused on its
+  flagship path. It now sorts by `context`, which the catalog answers.
 - Catalog-backed pools (`discover:` entries — including the bootstrap's
   implicit `free` pool) now resolve in every run shape. One-shot and inline
   bulk runs previously refused them with "not resolved for this run"; `run()`

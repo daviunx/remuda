@@ -1,5 +1,7 @@
 """FR-3b — zero-config bootstrap: inferred, announced, always overridable."""
 
+from remuda.catalog.models import FULL_CAPABILITIES, CatalogModel
+from remuda.catalog.resolve import apply_query
 from remuda.registry.bootstrap import (
     DISABLE_ENV,
     FREE_POOL,
@@ -43,6 +45,31 @@ class TestInference:
         query = pool.discover_queries[0]
         assert query.free is True
         assert query.take == 4
+
+    def test_the_free_pool_query_is_answerable_by_a_live_shaped_catalog(self) -> None:
+        """OpenRouter's live model list carries pricing and context but NO
+        throughput stats — the implicit pool must only ask for what the
+        catalog can answer, or zero-config refuses on its flagship path."""
+        result = bootstrap_registry(environ=WITH_KEY, probe=no_local)
+
+        query = result.registry.pool(FREE_POOL).discover_queries[0]
+        live_shaped = [
+            CatalogModel(
+                id=f"m{i}",
+                prompt_price_usd=0.0,
+                completion_price_usd=0.0,
+                context_length=1000 * (i + 1),
+            )
+            for i in range(5)
+        ]
+        selected = apply_query(
+            query,
+            live_shaped,
+            FULL_CAPABILITIES,
+            provider="openrouter",
+            catalog="openrouter",
+        )
+        assert len(selected) == query.take
 
     def test_a_reachable_local_endpoint_implies_a_local_provider(self) -> None:
         result = bootstrap_registry(environ=NOTHING, probe=local_answers)
