@@ -32,11 +32,13 @@ Coverage floor is `fail_under = 80` in `pyproject.toml`. Gates before every comm
 
 ## Deploy / Infra
 
-Nothing is deployed. CI on push runs lint, format, typecheck and the suite; there is no publish or release job until remuda has a second real consumer.
+Public open-source library (MIT). GitHub `daviunx/remuda` is the public home (PyPI package `remuda`); GitLab `neomanex/remuda` stays the monorepo submodule origin. Push BOTH on every change: `git push origin main && git push github main`.
 
 | What | Path |
 |------|------|
-| CI pipeline | `.gitlab-ci.yml` (composed from `neomanex/ci-templates`, pinned tag) |
+| GitLab CI (internal gate) | `.gitlab-ci.yml` (composed from `neomanex/ci-templates`, pinned tag) |
+| GitHub Actions (public gate) | `.github/workflows/test.yml` |
+| PyPI release | `.github/workflows/publish.yml` — fires on a `v*.*.*` tag push to GitHub; token secret `PYPI_API_TOKEN` |
 | Env vars | `.env.example` — provider key names only, never values |
 
 ## Gotchas

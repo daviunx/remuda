@@ -1,10 +1,12 @@
 [project]
 name = "remuda"
 version = "0.1.0"
-description = "Bulk LLM inference over pools of free/cheap models — ride one until it tires, swap to the next"
+description = "Bulk LLM inference over pools of free/cheap models: ride one until it tires, swap to the next"
 authors = [{name = "David Marsa", email = "david.marsa@neomanex.com"}]
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12,<3.14"
+keywords = ["llm", "inference", "bulk", "openrouter", "classification", "csv", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.12",
@@ -19,6 +21,11 @@ dependencies = [
     "rich (>=13.9,<15.0)",
     "httpx (>=0.28,<0.29)",
 ]
+
+[project.urls]
+Repository = "https://github.com/daviunx/remuda"
+Issues = "https://github.com/daviunx/remuda/issues"
+Changelog = "https://github.com/daviunx/remuda/blob/main/CHANGELOG.md"
 
 [project.scripts]
 remuda = "remuda.cli.app:main"

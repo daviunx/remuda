@@ -25,7 +25,7 @@ else carries a prefix, and internal booleans were renamed to comply
 
 **Why not rename anyway.** Typer derives a flag from the parameter name, and
 the spec models parse YAML keys by field name, so each rename is a breaking
-change to a surface an operator has already written down — a job directory, a
+change to a surface an operator has already written down: a job directory, a
 registry file, a shell script. `analysis.md` fixes these YAML keys as the job
 specification's user-facing contract. The prefix rule exists so a reader can
 tell a boolean from a noun; inside a `typer.Option("--fresh")` declaration or a

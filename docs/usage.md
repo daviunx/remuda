@@ -10,8 +10,8 @@ Every command splits its two streams, so all of them compose in a pipeline.
 
 | Stream | Carries |
 |--------|---------|
-| stdout | The answer, and nothing else — a one-shot answer, rendered CSV/JSONL/JSON, a table that IS the requested data |
-| stderr | Everything else — progress lines, registry announcements, the run report, refusals |
+| stdout | The answer, and nothing else: a one-shot answer, rendered CSV/JSONL/JSON, a table that IS the requested data |
+| stderr | Everything else: progress lines, registry announcements, the run report, refusals |
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -30,7 +30,7 @@ Every command splits its two streams, so all of them compose in a pipeline.
 | `remuda render RUN_DIR` | Turn a finished run into csv/jsonl/json. No model is called | stdout, or `-o FILE` |
 | `remuda report RUN_DIR [--json]` | Re-print a finished run's report, or its raw `report.json` | nothing |
 | `remuda pools show NAME` | A pool's materialized membership, discovery resolved | nothing |
-| `remuda pools check NAME` | One minimal request per member: alive, latency, refusal. Always exits 0 — a probe reports, it does not judge | nothing |
+| `remuda pools check NAME` | One minimal request per member: alive, latency, refusal. Always exits 0 (a probe reports, it does not judge) | nothing |
 | `remuda models list PROVIDER` | What a provider's own catalog currently serves | nothing |
 | `remuda stats` | Cross-run per-model success rate, latency and cost | nothing |
 | `remuda runs list` | Every recorded run, newest first | nothing |
@@ -43,15 +43,15 @@ The target decides the shape. An existing directory is a job; anything else IS
 the prompt.
 
 ```bash
-# 1. A job directory — resumes its previous run by default
+# 1. A job directory: resumes its previous run by default
 remuda run jobs/rally-severity [--limit N] [--only FIELD] [--pool NAME]
                                [--fill-missing COLUMN] [--fresh]
 
-# 2. Inline bulk — CSV in, the same CSV out with one new column
+# 2. Inline bulk: CSV in, the same CSV out with one new column
 remuda run "Severity of {{ title }}?" -i posts.csv --field severity \
     --vocab high,low -p cheap -o enriched.csv
 
-# 3. One-shot — the answer is all that reaches stdout
+# 3. One-shot: the answer is all that reaches stdout
 remuda run "Name the capital of Spain" -p cheap | tr a-z A-Z
 ```
 
@@ -77,7 +77,7 @@ A run resumes by default: re-invoke the same command and only what is left is
 computed. The ledger treats `ok` and `skipped` as done and deliberately retries
 `failed`, so a rerun re-attempts exactly the keys that never got an answer.
 
-Resume refuses — rather than mixing results — when the job definition or the
+Resume refuses (rather than mixing results) when the job definition or the
 input file has changed since the run started. `--fresh` starts a new run and
 leaves the old one on disk.
 
@@ -99,7 +99,7 @@ re-rendered in any shape without calling a model again.
 
 ```
 ~/.config/remuda/     # user level
-./.remuda/            # project level — overrides the user level by name
+./.remuda/            # project level, overrides the user level by name
 ├── providers.yaml    # endpoints, timeouts, key_env (a variable NAME, never a key)
 ├── models.yaml       # model ids, per-model request quirks, prices
 └── pools.yaml        # ordered members or discover: queries, strategy, mop-up
