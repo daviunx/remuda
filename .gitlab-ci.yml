@@ -1,0 +1,71 @@
+# remuda CI — composed from neomanex/ci-templates pinned at v0.11.0.
+#
+# Library archetype without a database: lint (ruff), format check, typecheck
+# (mypy strict) and the full pytest suite with the pyproject coverage gate.
+# remuda has NO private package dependencies, so no job-token allowlist is
+# needed and no sidecar is started (SIDECAR_MODE: none).
+#
+# Publishing is deliberately absent: remuda is not released to PyPI or the
+# GitLab package registry until it has a second real consumer
+# (planning/neo-cli/neo-infer-cheap-bulk-llm/analysis.md). Add
+# python-poetry-publish.yml + release-pypi.yml when that day comes.
+#
+# The pin is an EXACT tag, never `main` — a template change cannot reach this
+# repo until the ref is bumped deliberately (ci-templates/README.md).
+
+include:
+  - project: 'neomanex/ci-templates'
+    ref: v0.11.0
+    file:
+      - '/templates/_base.yml'        # ALWAYS first: NMX_*_IMAGE pins + workflow:rules
+      - '/templates/python-test.yml'  # lint:ruff, lint:typecheck, test
+
+stages:
+  - test
+
+variables:
+  # No database, no OpenSearch — remuda's suite opens loopback sockets only.
+  SIDECAR_MODE: "none"
+  # tests/ is the whole suite: tests/unit/ and tests/integration/ are both
+  # selected by this one path (testing/overview.md → CI Reachability).
+  PYTEST_ARGS: "tests/ -v"
+  # Coverage floor lives in pyproject.toml ([tool.coverage.report] fail_under
+  # = 80); the job passes --cov and that setting blocks.
+
+# ---------------------------------------------------------------------------
+# test — override the template's DB variant: no sidecar, no DSN.
+# ---------------------------------------------------------------------------
+test:
+  extends: .python_test_base
+  stage: test
+  tags: [nmx-build]
+  services: []
+  script:
+    - pytest ${PYTEST_ARGS} --cov --cov-report=term-missing
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - !reference [.nmx_branch_lean_rules, rules]
+
+# ---------------------------------------------------------------------------
+# lint:format — `ruff format --check` is a separate gate from `ruff check`
+# and the template carries no job for it. Blocking, like lint:ruff.
+# ---------------------------------------------------------------------------
+lint:format:
+  extends: .python_test_base
+  stage: test
+  tags: [nmx-build]
+  script:
+    - ruff format --check .
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - !reference [.nmx_branch_lean_rules, rules]
+
+# ---------------------------------------------------------------------------
+# lint:typecheck — the template ships mypy as allow_failure. remuda is
+# mypy-strict clean from its first commit, so here it BLOCKS: a type error is
+# a defect, not a warning.
+# ---------------------------------------------------------------------------
+lint:typecheck:
+  allow_failure: false

@@ -1,0 +1,18 @@
+{
+  "models": [
+    {
+      "name": "qwen3:4b",
+      "model": "qwen3:4b",
+      "size": 2620000000,
+      "digest": "a1b2c3d4",
+      "details": {"family": "qwen3", "parameter_size": "4.0B"}
+    },
+    {
+      "name": "llama3.2:3b",
+      "model": "llama3.2:3b",
+      "size": 2019000000,
+      "digest": "e5f6a7b8",
+      "details": {"family": "llama", "parameter_size": "3.2B"}
+    }
+  ]
+}

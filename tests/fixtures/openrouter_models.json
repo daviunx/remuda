@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "id": "meta-llama/llama-3.3-70b-instruct:free",
+      "name": "Meta: Llama 3.3 70B Instruct (free)",
+      "context_length": 65536,
+      "pricing": {"prompt": "0", "completion": "0", "request": "0"},
+      "stats": {"throughput": 92.4}
+    },
+    {
+      "id": "qwen/qwen-2.5-72b-instruct:free",
+      "name": "Qwen 2.5 72B Instruct (free)",
+      "context_length": 32768,
+      "pricing": {"prompt": "0", "completion": "0"},
+      "stats": {"throughput": 61.0}
+    },
+    {
+      "id": "mistralai/mistral-small-3.1:free",
+      "name": "Mistral Small 3.1 (free)",
+      "context_length": 16384,
+      "pricing": {"prompt": "0", "completion": "0"},
+      "stats": {"throughput": 120.5}
+    },
+    {
+      "id": "anthropic/claude-haiku-4",
+      "name": "Anthropic: Claude Haiku 4",
+      "context_length": 200000,
+      "pricing": {"prompt": "0.0000008", "completion": "0.000004"},
+      "stats": {"throughput": 145.2}
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI: GPT-4o mini",
+      "context_length": 128000,
+      "pricing": {"prompt": "0.00000015", "completion": "0.0000006"},
+      "stats": {"throughput": 133.9}
+    }
+  ]
+}

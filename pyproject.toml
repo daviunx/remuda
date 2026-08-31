@@ -1,0 +1,128 @@
+[project]
+name = "remuda"
+version = "0.1.0"
+description = "Bulk LLM inference over pools of free/cheap models — ride one until it tires, swap to the next"
+authors = [{name = "David Marsa", email = "david.marsa@neomanex.com"}]
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic (>=2.10,<3.0)",
+    "pyyaml (>=6.0,<7.0)",
+    "jinja2 (>=3.1,<4.0)",
+    "typer (>=0.15,<0.20)",
+    "rich (>=13.9,<15.0)",
+    "httpx (>=0.28,<0.29)",
+]
+
+[project.scripts]
+remuda = "remuda.cli.app:main"
+
+[dependency-groups]
+dev = [
+    "pytest (>=8.3.4,<10.0.0)",
+    "pytest-asyncio (>=1.1.0,<2.0.0)",
+    "pytest-cov (>=6.0.0,<7.0.0)",
+    "mypy (>=1.14,<2.0)",
+    "types-PyYAML (>=6.0,<7.0)",
+    # Pinned in the manifest and installed from it by CI. A gate that resolves
+    # its linter at run time reddens on someone else's release date
+    # (documentation/standards/python/03-tooling.md).
+    "ruff (>=0.16.0,<0.17.0)",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [".git", ".venv", "__pycache__"]
+
+[tool.ruff.lint]
+# EXPLICIT, never inherited — a tool's default rule set is not a stable contract
+# across versions (documentation/standards/python/03-tooling.md).
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "SIM",  # flake8-simplify
+    "TC",   # flake8-type-checking
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate (commented code)
+    "PL",   # Pylint
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "E501",    # Line too long (handled by formatter)
+    "PLR0913", # Too many arguments
+    "PLR2004", # Magic value comparison
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["remuda"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = ["-v", "--tb=short", "--strict-markers"]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["remuda"]
+branch = true
+# The engine appends the ledger through asyncio.to_thread, so lines execute on
+# worker threads; without this, coverage loses track of them
+# (documentation/standards/testing/overview.md → Coverage Enforcement).
+# `greenlet` is deliberately absent — remuda has no greenlet dependency and
+# coverage errors out on a concurrency mode whose module is not installed.
+concurrency = ["thread"]
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 80

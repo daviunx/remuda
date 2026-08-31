@@ -1,0 +1,7 @@
+{
+  "object": "list",
+  "data": [
+    {"id": "qwen3-4b", "object": "model", "owned_by": "vllm"},
+    {"id": "mistral-7b-instruct", "object": "model", "owned_by": "vllm"}
+  ]
+}
