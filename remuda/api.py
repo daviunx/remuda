@@ -73,6 +73,7 @@ async def run(
     Raises:
         EngineError: the run cannot be planned.
     """
+    resolved_pools = await _ensure_resolved_pools(job, registry, pool, resolved_pools)
     runner = Runner(
         job=job,
         registry=registry,
@@ -169,6 +170,36 @@ async def _run_into(opened: OpenedRun, **options: Any) -> Report:
         store.close()
     store.write_report(report)
     return report
+
+
+async def _ensure_resolved_pools(
+    job: Job,
+    registry: Registry,
+    pool_override: str | None,
+    given: Mapping[str, ResolvedPool] | None,
+) -> Mapping[str, ResolvedPool] | None:
+    """Materialize catalog-backed pools the run needs but was not handed.
+
+    Statically declared pools resolve from the registry inside the engine;
+    only pools with discover queries need a catalog round-trip before
+    planning. This makes them work in every run shape — one-shot and inline
+    included — not just the job-directory path, which snapshots its own.
+    """
+    wanted = {pool_override or field.pool for field in job.fields}
+    resolved = dict(given or {})
+    pending = sorted(
+        name
+        for name in wanted
+        if name is not None
+        and name not in resolved
+        and registry.pool(name).discover_queries
+    )
+    if not pending:
+        return given
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for name in pending:
+            resolved[name] = await resolve_pool(registry.pool(name), registry, client)
+    return resolved
 
 
 async def _resolved_pools(

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from remuda.api import run
+from remuda.catalog.errors import CatalogError
 from remuda.engine.lanes import ModelLane
 from remuda.engine.plan import EngineError, select_fields
 from remuda.engine.runner import PoolLanes, RowResult
@@ -306,7 +307,11 @@ class TestPoolBehaviour:
 
         assert report.ok == 2
 
-    async def test_a_discovery_pool_is_refused_with_an_explanation(self) -> None:
+    async def test_a_discovery_pool_over_an_uncatalogued_provider_is_refused(
+        self,
+    ) -> None:
+        """`run` resolves discover pools itself; a provider with no catalog
+        cannot answer, and the refusal says how to fix it."""
         registry = Registry(
             providers=[provider()],
             pools=[
@@ -321,7 +326,7 @@ class TestPoolBehaviour:
             ],
         )
 
-        with pytest.raises(EngineError, match="catalog"):
+        with pytest.raises(CatalogError, match="declares no catalog"):
             await run_with(job_of(classify()), ScriptedTransport(), registry)
 
 

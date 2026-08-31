@@ -343,3 +343,78 @@ class TestStatsAndRuns:
 
         assert result.exit_code == 1
         assert "no finished runs" in result.stderr
+
+
+@pytest.fixture
+def discover_config_dir(tmp_path: Path, model_server: FakeModelServer) -> Path:
+    """A registry whose only pool is materialized from the provider catalog."""
+    model_server.catalog_payload = {"data": [{"id": "a"}]}
+    directory = tmp_path / "discover-registry"
+    directory.mkdir()
+    (directory / "providers.yaml").write_text(
+        yaml.safe_dump(
+            {"local": {"base_url": model_server.base_url, "catalog": "openai_compat"}}
+        )
+    )
+    (directory / "pools.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "free": {
+                    "entries": [{"discover": {"provider": "local", "include": ["a"]}}]
+                }
+            }
+        )
+    )
+    return directory
+
+
+class TestDiscoverPools:
+    """A catalog-backed pool works in every run shape, not just job dirs."""
+
+    def test_a_one_shot_resolves_a_discover_pool(
+        self, discover_config_dir: Path, model_server: FakeModelServer
+    ) -> None:
+        model_server.default = "Madrid"
+
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "Name the capital of Spain",
+                "-p",
+                "free",
+                "-c",
+                str(discover_config_dir),
+            ],
+        )
+
+        assert result.exit_code == 0, result.stderr
+        assert result.stdout == "Madrid\n"
+
+    def test_an_inline_run_resolves_a_discover_pool(
+        self,
+        discover_config_dir: Path,
+        input_file: Path,
+        model_server: FakeModelServer,
+    ) -> None:
+        model_server.default = "high"
+
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "Severity of {{ title }}?",
+                "-i",
+                str(input_file),
+                "-p",
+                "free",
+                "--field",
+                "severity",
+                "-c",
+                str(discover_config_dir),
+            ],
+        )
+
+        assert result.exit_code == 0, result.stderr
+        _, records = parse_csv(result.stdout)
+        assert [record["severity"] for record in records] == ["high"] * 3

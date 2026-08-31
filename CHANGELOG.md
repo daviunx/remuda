@@ -11,6 +11,14 @@ until it has a second real consumer.
 
 ## [Unreleased]
 
+### Fixed
+
+- Catalog-backed pools (`discover:` entries — including the bootstrap's
+  implicit `free` pool) now resolve in every run shape. One-shot and inline
+  bulk runs previously refused them with "not resolved for this run"; `run()`
+  materializes any discover pool it was not handed, so only the job-directory
+  path keeps its resume snapshot semantics.
+
 ### Added
 
 - **Job specification.** A job directory (`job.yaml` + an input file) declares
