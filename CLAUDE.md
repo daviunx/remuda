@@ -36,8 +36,7 @@ Public open-source library (MIT). GitHub `daviunx/remuda` is the public home (Py
 
 | What | Path |
 |------|------|
-| GitLab CI (internal gate) | `.gitlab-ci.yml` (composed from `neomanex/ci-templates`, pinned tag) |
-| GitHub Actions (public gate) | `.github/workflows/test.yml` |
+| CI (the only gate) | `.github/workflows/test.yml` — GitHub Actions. There is no GitLab CI: never add a `.gitlab-ci.yml` |
 | PyPI release | `.github/workflows/publish.yml` — fires on a `v*.*.*` tag push to GitHub; PyPI OIDC trusted publishing (`id-token: write`, environment `pypi`), no token secret |
 | Env vars | `.env.example` — provider key names only, never values |
 
